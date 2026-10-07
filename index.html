@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ralph — Multiplayer Quiz</title>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:linear-gradient(135deg,#130b3d,#38218b,#08758a);color:#fff;min-height:100vh;padding:16px}.wrap{max-width:720px;margin:auto}.card{background:#ffffff18;border:1px solid #ffffff30;border-radius:22px;padding:22px;box-shadow:0 12px 35px #0005;backdrop-filter:blur(8px)}h1{text-align:center;margin:4px 0 8px;font-size:29px}.sub{text-align:center;opacity:.9}.hidden{display:none}.row{display:flex;gap:10px}.row>*{flex:1}input{width:100%;padding:14px;border-radius:13px;border:0;margin:6px 0;font-size:16px;text-transform:none}button{padding:14px;border:0;border-radius:13px;font-weight:700;font-size:16px;cursor:pointer}.primary{background:#ffd84d;color:#111;width:100%;margin-top:8px}.secondary{background:#fff;color:#111;width:100%;margin-top:8px}.roomcode{font-size:42px;font-weight:900;letter-spacing:8px;text-align:center;margin:8px}.players{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:15px 0}.player{background:#ffffff15;border-radius:12px;padding:11px}.host{font-size:12px;opacity:.7}.qr{text-align:center;background:white;padding:12px;border-radius:16px;width:max-content;margin:15px auto}.qr canvas{display:block}.center{text-align:center}.question{font-size:21px;line-height:1.35}.option{display:block;width:100%;margin:9px 0;background:white;color:#111;text-align:left}.option:disabled{opacity:.65}.bar{height:10px;background:#ffffff25;border-radius:20px;overflow:hidden}.fill{height:100%;background:#ffd84d;width:100%}.timer{font-size:27px;text-align:center;font-weight:900;margin:9px}.rank{display:flex;justify-content:space-between;padding:12px;background:#ffffff12;border-radius:12px;margin:7px 0}.gold{font-size:22px}.error{color:#ffd0d0;text-align:center;min-height:22px}.small{font-size:13px;opacity:.75;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="card" id="home">
+<h1>🎮 Ralph Breaks the Internet</h1><p class="sub">Quiz Multiplayer</p>
+<input id="name" placeholder="Seu nome" maxlength="20">
+<div class="row"><button class="primary" onclick="create()">Criar sala</button><button class="secondary" onclick="showJoin()">Entrar</button></div>
+<div id="joinBox" class="hidden"><input id="code" placeholder="Código da sala" maxlength="4" style="text-transform:uppercase"><button class="primary" onclick="join()">🚀 Entrar na sala</button></div>
+<div id="err" class="error"></div>
+<p class="small">Cada jogador usa seu próprio celular. Um celular cria a sala e os outros entram pelo código ou QR Code.</p>
+</div>
+
+<div class="card hidden" id="lobby">
+<h1>👥 Lobby</h1><div class="center">Código da sala</div><div class="roomcode" id="roomCode"></div>
+<div class="qr"><canvas id="qr"></canvas><div style="color:#111;font-size:12px;margin-top:5px">Escaneie para abrir o jogo</div></div>
+<div class="center"><b>Jogadores</b></div><div class="players" id="players"></div>
+<button class="primary hidden" id="start" onclick="start()">▶ COMEÇAR PARTIDA</button>
+<p class="small">O criador da sala inicia quando todos entrarem.</p>
+</div>
+
+<div class="card hidden" id="game">
+<div class="center"><b id="qnum"></b><div class="timer" id="timer">15</div><div class="bar"><div class="fill" id="fill"></div></div></div>
+<h2 class="question" id="q"></h2><div id="opts"></div><p class="center" id="answered"></p>
+</div>
+
+<div class="card hidden" id="round">
+<h1>📊 Ranking</h1><div id="roundRank"></div><button class="primary hidden" id="next" onclick="next()">Próxima pergunta</button><p class="small">Aguarde o criador da sala.</p>
+</div>
+
+<div class="card hidden" id="finish">
+<h1>🏆 Resultado final</h1><div id="finalRank"></div><button class="primary hidden" id="restart" onclick="restart()">🔄 Nova partida</button>
+</div>
+</div>
+
+<script>
+const socket=io();let room=null,isHost=false,timerInt=null;
+const $=id=>document.getElementById(id);
+function show(id){["home","lobby","game","round","finish"].forEach(x=>$(x).classList.add("hidden"));$(id).classList.remove("hidden")}
+function msg(x){$("err").textContent=x}
+function create(){const n=$("name").value.trim();if(!n)return msg("Digite seu nome.");socket.emit("room:create",{name:n})}
+function showJoin(){$("joinBox").classList.toggle("hidden");$("code").focus()}
+function join(){const n=$("name").value.trim(),c=$("code").value.trim();if(!n||c.length<4)return msg("Digite seu nome e o código.");socket.emit("room:join",{name:n,code:c})}
+socket.on("room:created",d=>{room=d.code;isHost=true;show("lobby");renderQR()});
+socket.on("room:joined",d=>{room=d.code;show("lobby")});
+socket.on("error:msg",msg);
+function renderQR(){const url=location.origin+"?room="+room;QRCode.toCanvas($("qr"),url,{width:180},e=>{})}
+function renderPlayers(list){$("players").innerHTML=list.map(p=>`<div class="player">👤 ${escape(p.name)}${p.id===socket.id?' <span class="host">Você</span>':''}</div>`).join("");}
+function escape(s){return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+socket.on("room:update",r=>{
+ room=r.code; if($("room").value){} 
+ if(r.state==="lobby"){show("lobby");$("roomCode").textContent=r.code;renderPlayers(r.players);$("start").classList.toggle("hidden",!isHost);renderQR()}
+ if(r.state==="playing"){show("game");renderQuestion(r)}
+ if(r.state==="ranking"){show("round");renderRank(r.players);$("next").classList.toggle("hidden",!isHost)}
+ if(r.state==="finished"){show("finish");renderFinal(r.players);$("restart").classList.toggle("hidden",!isHost)}
+});
+function renderQuestion(r){$("qnum").textContent=`Pergunta ${r.current+1} de ${r.total} • ${r.question.p} pontos`;$("q").textContent=r.question.q;$("answered").textContent="";$("opts").innerHTML=r.question.a.map((x,i)=>`<button class="option" onclick="answer(${i})">${escape(x)}</button>`).join("");clearInterval(timerInt);timerInt=setInterval(()=>{let sec=Math.max(0,Math.ceil((r.question.endsAt-Date.now())/1000));$("timer").textContent=sec;$("fill").style.width=(sec/15*100)+"%";if(sec<=0)clearInterval(timerInt)},100)}
+function answer(i){document.querySelectorAll(".option").forEach(b=>b.disabled=true);$("answered").textContent="✅ Resposta enviada!";socket.emit("answer",{code:room,index:i})}
+function renderRank(players){const a=[...players].sort((x,y)=>y.score-x.score);$("roundRank").innerHTML=a.map((p,i)=>`<div class="rank"><span>${i===0?"🥇":i===1?"🥈":i===2?"🥉":(i+1)+". "} ${escape(p.name)}</span><b>${p.score} pts</b></div>`).join("")}
+function renderFinal(players){const a=[...players].sort((x,y)=>y.score-x.score);$("finalRank").innerHTML=a.map((p,i)=>`<div class="rank ${i===0?'gold':''}"><span>${i===0?"🏆 ":i===1?"🥈 ":i===2?"🥉 ":(i+1)+". "}${escape(p.name)}</span><b>${p.score} pts</b></div>`).join("")}
+function start(){socket.emit("game:start",{code:room})}function next(){socket.emit("next",{code:room})}function restart(){socket.emit("restart",{code:room})}
+const params=new URLSearchParams(location.search);if(params.get("room")){$("code").value=params.get("room").toUpperCase();showJoin()}
+</script>
+</body>
+</html>
